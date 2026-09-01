@@ -2,3 +2,7 @@
 .idea/
 __pycache__/
 original_reproduction_code/
+
+# Embedding benchmark: cached vectors, several GB, rebuildable from the datasets.
+embeddings_cache/
+logs.log
