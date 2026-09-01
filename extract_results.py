@@ -1,17 +1,16 @@
 import json, os, sys, importlib
-from typing import Optional
-
 
 import pandas as pd
 from collections import defaultdict
 from logger import mylog
 from benchmarking import dataset_key_to_base_fname, get_bench_path
+from labels import get_profile
 
 logger = mylog.get_logger()
 
 PRINT_LATEX = False
 
-def calc(bench_id: str, paths: dict[str, list[str]], method_names_to_prefixes: dict[str, str], expected_prediction: Optional[bool] = False, dataset_to_method_stats= None, is_clf=False):
+def calc(bench_id: str, paths: dict[str, list[str]], method_names_to_prefixes: dict[str, str], profile, dataset_to_method_stats= None):
     bench_path = get_bench_path(bench_id)
     if dataset_to_method_stats is None:
         dataset_to_method_stats = defaultdict(lambda: defaultdict(lambda: {'wrong': 0, 'total': 0}))
@@ -20,41 +19,30 @@ def calc(bench_id: str, paths: dict[str, list[str]], method_names_to_prefixes: d
         for file_key in dataset_paths:
             file_path = os.path.join(bench_path, dataset_key_to_base_fname[file_key]+".json")
 
+            if not os.path.exists(file_path):
+                # Averages are defined over all three challenge groups, so a bench
+                # covering only some groups cannot produce a comparable score.
+                raise Exception(
+                    f"Bench '{bench_id}' has no data for group '{dataset_key}' "
+                    f"(missing {os.path.basename(file_path)}). Result extraction "
+                    f"requires all ten groups. Re-run without 'dataset_keys' to get "
+                    f"comparable results."
+                )
+
             with open(file_path, 'r') as f:
                 data = json.load(f)
             for sample_id, prediction in data.items():
+                # ground truth for this record within this group; None means the
+                # record is not part of the group's evaluation set.
+                expected_prediction = profile.expected_label(dataset_key, prediction)
+                if expected_prediction is None:
+                    continue
                 for method_name, method_prefix in method_names_to_prefixes.items():
                     for possible_prediction_key, possible_prediction_value in prediction.items():
                         if possible_prediction_key.startswith(method_prefix):
-                            if dataset_key == 'STS':
-                                score = prediction['score']
-                                if score < 0 or score >= 3:
-                                    # print(f"ignored score {score} for {dataset_key}")
-                                    continue
-                            if dataset_key == 'SICK':
-                                score = prediction['score']
-                                if score < 1 or score >= 3:
-                                    # print(f"ignored score {score} for {dataset_key}")
-                                    continue
-                            # print(expected_prediction)
-                            if is_clf:
-                                if dataset_key == 'STS-H':
-                                    if 'label' not in prediction:
-                                        # unlabelled, not part of the dataset
-                                        continue
-                                    expected_prediction = prediction['label']
-                                else:
-                                    expected_prediction = (prediction['label'] == 1)
                             dataset_to_method_stats[dataset_key][method_name]['total'] += 1
                             if possible_prediction_value != expected_prediction:
                                 dataset_to_method_stats[dataset_key][method_name]['wrong'] += 1
-                            elif possible_prediction_value == expected_prediction:
-                                pass
-                            else:
-                                logger.error(
-                                    f"Unexpected prediction value {possible_prediction_value} for method {method_name}!")
-                                raise Exception(
-                                    f"Unexpected prediction value {possible_prediction_value} for method {method_name}!")
 
 
     data = {}
@@ -93,43 +81,6 @@ def load_config(config_path):
 
 
 if __name__ == '__main__':
-    clf_dataset_group_keys = {
-        "PAWSX": [
-            "pawsx_test"
-        ],
-        "STS-H": ["stsbenchmark"],
-        "MRPC": ["ms_mrpc"]
-    }
-
-
-    min_dataset_group_keys = {
-        "SNLI": [
-            "stanfordnlp_snli_pre_hyp",
-            "stanfordnlp_snli_hyp_pre"
-        ],
-    "ANLI": [
-        "fb_anli_pre_hyp",
-        "fb_anli_hyp_pre"
-    ],
-        "XNLI": [
-            "fb_xnli_pre_hyp",
-            "fb_xnli_hyp_pre"
-        ],
-    "STS": ["stsbenchmark"],
-
-
-    "SICK": ["sickr_sts"]
-    }
-    max_dataset_group_keys = {
-        "TRUE": ["simple_amr"],
-        "SIMP": [
-            "onestop_all"
-        ]
-
-    }
-
-
-
 
 
     if len(sys.argv) == 1:
@@ -142,18 +93,30 @@ if __name__ == '__main__':
 
     config = load_config(config_path)
     bench_id = config["bench_id"]
+
+    profile = get_profile(config.get("paper_compat", False))
+    clf_dataset_group_keys = profile.classify
+    min_dataset_group_keys = profile.minimize
+    max_dataset_group_keys = profile.maximize
     if "prefixes" in config:
         prefixes = config["prefixes"]
-    else:
+    elif "methods" in config:
         m = config["methods"]
         prefixes = {}
         for method in m:
             n = method["name"]
             prefixes[n] = n
+    else:
+        # embedding benchmark: one method per (embedder, scorer) combination.
+        prefixes = {}
+        for embedder in config["embedders"]:
+            for scorer in config["scorers"]:
+                n = f"{embedder['name']}/{scorer['name']}"
+                prefixes[n] = n
 
-    min = calc(bench_id, min_dataset_group_keys, method_names_to_prefixes=prefixes, expected_prediction=False)
-    max = calc(bench_id, max_dataset_group_keys, method_names_to_prefixes=prefixes, expected_prediction=True)
-    clf = calc(bench_id, clf_dataset_group_keys, method_names_to_prefixes=prefixes, expected_prediction=None, is_clf=True)
+    min = calc(bench_id, min_dataset_group_keys, method_names_to_prefixes=prefixes, profile=profile)
+    max = calc(bench_id, max_dataset_group_keys, method_names_to_prefixes=prefixes, profile=profile)
+    clf = calc(bench_id, clf_dataset_group_keys, method_names_to_prefixes=prefixes, profile=profile)
 
     results = {
         'Classify!': clf,

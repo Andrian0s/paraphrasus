@@ -3,6 +3,8 @@
 
 This repository contains the code and datasets for benchmarking a paraphrase detector, as described in our COLING 2025 paper *PARAPHRASUS: A Comprehensive Benchmark for Evaluating Paraphrase Detection Models*. It also has the scripts that allow reproduction and extension of the results that are displayed in the paper.
 
+It additionally contains an extension for benchmarking pre-trained embedding models with supervised calibration, as described in *Efficient Paraphrase Detection With Embeddings* ([ACL Anthology](TODO-ANTHOLOGY-LINK)). See [Embedding models](#embedding-models).
+
 ## Quick start
 
 To evaluate a model on the full PARAPHRASUS benchmark, you simply need to wrap it into a binary prediction method that accepts a list with pairs of texts, and returns a list with boolean True/False predictions.
@@ -45,14 +47,14 @@ Assuming the dummy prediction functions above are located at the file my_funcs.p
   ]
 }
 ```
-Then, assuming the above configuration is the local file my_config.json, one can run the benchmark like so:
+Then, assuming the above configuration is saved as configs/my_config.json, one can run the benchmark like so:
 ```bash
-python3 benchmarking.py my_config.json
+python3 benchmarking.py configs/my_config.json
 ```
 
 Finally, the results can be extracted by running:
 ```bash
-python3 extract_results.py my_config.json
+python3 extract_results.py configs/my_config.json
 ```
 
 which will save the error rates at: benches/mybench/results.json
@@ -62,6 +64,7 @@ which will save the error rates at: benches/mybench/results.json
 - [Overview](#overview)
 - [Repository Organization](#repository-organization)
 - [Reproducing the Experiments](#reproducing-the-experiments)
+- [Embedding models](#embedding-models)
 - [Further Experimentation](#further-experimentation)
 - [BibTeX Reference](#bibtex-reference)
 - [Datasets and Licenses](#datasets-and-licenses)
@@ -75,6 +78,7 @@ This repository allows replication of the experiments from the research titled "
 - Original predictions generated using the models described in the paper, useful for further qualitative or quantitative analysis.
 - Scripts and configuration files to reproduce the results.
 - Utility scripts to reproduce statistics plots and so on.
+- An extension for benchmarking pre-trained embedding models, described in [Embedding models](#embedding-models).
 
 ## Repository Organization:
 
@@ -87,6 +91,15 @@ The repository is organized as follows:
 │   └── Contains the datasets used in the experiments, in a JSON format. Copied for every new benchmark
 ├── models
 │   └── Empty models file used in the experiments.
+├── configs
+│   └──paper_config.json
+│      └──Benchmark configuration for the methods used in the paper.
+│   └──llama3_3_70b_config.json
+│      └──Benchmark configuration for running the benchmark using Llama3.3 70b Q8 and 8b Q4
+│   └──ablation_a_config.json, ablation_b_config.json
+│      └──Benchmark configurations for the ablations in the paper.
+│   └──full_embed_config.json
+│      └──Benchmark configuration for the embedding models. See Embedding models.
 ├── benchmarking.py
 │   └── Main benchmarking code, for running predictions on the datasets using specified methods.
 ├── extract_results.py
@@ -100,23 +113,27 @@ The repository is organized as follows:
 |      └──methods to run the benchmark using Llama3.3 70b Q8 and 8b Q4
 ├── logger.py
 │   └── Utility for managing logging: all events are logged both to stdout and to a local logs.log file.
-├── paper_config.json
-│   └── Benchmark configuration for the methods used in the paper.
-├── llama3_3_70b_config.json
-│   └── Benchmark configuration for running the benchmark using Llama3.3 70b Q8 and 8b Q4
+├── benchmarking_embed.py
+│   └── Benchmarking code for embedding models. Counterpart to benchmarking.py.
+├── embedders.py, embedding_store.py, similarity.py, scorers.py, calibrate_embeddings_clf.py
+│   └── Supporting modules for the embedding benchmark. See README_embeddings.md.
+├── labels.py
+│   └── Group definitions and ground truth labels, shared by extract_results.py and the embedding benchmark.
+├── README_embeddings.md
+│   └── Full documentation for the embedding extension.
 ```
 
 ## Reproducing the Experiments
 
 Predictions using the LLMs in the paper can be run locally (provided LM Studio is running and serving the model meta-llama-3-8b-instruct (Meta-Llama-3-8B-Instruct-Q4_K_M.gguf)) like so:
 ```bash
-python3 benchmarking.py paper.json
+python3 benchmarking.py configs/paper_config.json
 ```
 
 The predictions of the methods mentioned in the paper are given as a benchmark with the identifier 'paper'.
 That means, the results (error rates) can be extracted like so:
 ```bash
-python3 extract_results.py paper
+python3 extract_results.py configs/paper_config.json
 ```
 At benches/paper the file results.json is generated:
 ```json
@@ -264,13 +281,62 @@ At benches/paper the file results.json is generated:
 }
 ```
 
+## Embedding models
+
+Pre-trained embedding models can be benchmarked with a separate entry point. Rather than
+asking a model to judge each pair, it embeds every text once and turns the resulting
+vectors into decisions, which is what makes the approach cheap at scale. This is the
+methodology of *Efficient Paraphrase Detection With Embeddings*.
+
+An embedder is any function that takes a list of texts and returns one vector per text,
+which is what `SentenceTransformer.encode` already does:
+
+```python
+from benchmarking_embed import bench_embed
+from scorers import get_scorer
+from sentence_transformers import SentenceTransformer
+
+embedders = {"M-MiniLM": SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2").encode}
+scorers = {"thr": get_scorer({"method": "threshold"})}
+
+bench_embed(embedders, scorers, bench_id="myembedbench")
+```
+
+Two calibration strategies are provided: a single threshold on cosine similarity, and a
+logistic regression on the unsigned element-wise difference between the two embeddings.
+Both are fitted leave-one-dataset-out, so predictions for a group come from a fit that
+never saw that group.
+
+Running by configuration works the same way as for the main benchmark:
+
+```bash
+pip install -r requirements.txt
+python3 benchmarking_embed.py configs/full_embed_config.json
+python3 extract_results.py configs/full_embed_config.json
+```
+
+`configs/full_embed_config.json` covers the nine embedding models of the paper, the
+logistic regression feature ablation, and the instruction-prompt variants: 12 embedders
+by 5 scorers, written into one benchmark at `benches/full_embed_results`. Results appear
+in the same `results.json` format as the main benchmark, so embedding methods and the
+LLM baselines can be compared in one table.
+
+Embeddings are cached to disk and both stages resume, so an interrupted run picks up
+where it stopped.
+
+Full documentation, including the calibration protocol, the supported scorers, and how
+to reproduce the published numbers exactly, is in
+[README_embeddings.md](README_embeddings.md).
+
 ## Further Experimentation
 
 You can run your own experiments using any prediction methods of your choosing.
 
 ## BibTeX Reference
 
-If you would like to cite this project, or the associated paper, here's a bibtex:
+If you would like to cite this project, or the associated papers, here are the bibtex entries.
+
+For the benchmark:
 
 ```bibtex
 @inproceedings{michail-etal-2025-paraphrasus,
@@ -291,6 +357,25 @@ If you would like to cite this project, or the associated paper, here's a bibtex
     publisher = "Association for Computational Linguistics",
     url = "https://aclanthology.org/2025.coling-main.585/",
     pages = "8749--8762"
+}
+```
+
+For the embedding extension:
+
+```bibtex
+@inproceedings{rocci-etal-2026-efficient,
+    title = "Efficient Paraphrase Detection With Embeddings",
+    author = "Rocci, Giovanni  and
+      Michail, Andrianos  and
+      Loizides, Andreas  and
+      Clematide, Simon  and
+      Opitz, Juri",
+    booktitle = "TODO",
+    year = "TODO",
+    address = "TODO",
+    publisher = "Association for Computational Linguistics",
+    url = "TODO-ANTHOLOGY-LINK",
+    pages = "TODO"
 }
 ```
 

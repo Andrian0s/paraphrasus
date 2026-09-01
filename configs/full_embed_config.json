@@ -1,0 +1,204 @@
+{
+  "bench_id": "full_embed_results",
+  "calibration": {
+    "samples_per_dataset": 500,
+    "seed": 42
+  },
+  "batch_size": 4096,
+  "embedders": [
+    {
+      "name": "M-MiniLM",
+      "model_path": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "model_kwargs": {
+        "torch_dtype": "float16"
+      },
+      "compile": {
+        "dynamic": true
+      },
+      "encode_kwargs": {
+        "batch_size": 256
+      }
+    },
+    {
+      "name": "M-MPNET",
+      "model_path": "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+      "model_kwargs": {
+        "torch_dtype": "float16"
+      },
+      "compile": {
+        "dynamic": true
+      },
+      "encode_kwargs": {
+        "batch_size": 256
+      }
+    },
+    {
+      "name": "mGTE",
+      "model_path": "Alibaba-NLP/gte-multilingual-base",
+      "trust_remote_code": true,
+      "model_kwargs": {
+        "torch_dtype": "float16"
+      },
+      "compile": {
+        "dynamic": true
+      },
+      "encode_kwargs": {
+        "batch_size": 256
+      }
+    },
+    {
+      "name": "KaLM-Emb",
+      "model_path": "KaLM-Embedding/KaLM-embedding-multilingual-mini-instruct-v2.5",
+      "trust_remote_code": true,
+      "model_kwargs": {
+        "torch_dtype": "float16"
+      },
+      "compile": {
+        "dynamic": true
+      },
+      "encode_kwargs": {
+        "batch_size": 256
+      },
+      "max_seq_length": 512
+    },
+    {
+      "name": "mE5",
+      "model_path": "intfloat/multilingual-e5-large",
+      "encode_kwargs": {
+        "prompt_name": "query",
+        "batch_size": 256
+      },
+      "model_kwargs": {
+        "torch_dtype": "float16"
+      },
+      "compile": {
+        "dynamic": true
+      }
+    },
+    {
+      "name": "mE5-instr",
+      "model_path": "intfloat/multilingual-e5-large-instruct",
+      "encode_kwargs": {
+        "prompt_name": "query",
+        "batch_size": 256
+      },
+      "model_kwargs": {
+        "torch_dtype": "float16"
+      },
+      "compile": {
+        "dynamic": true
+      }
+    },
+    {
+      "name": "BGE-m3",
+      "model_path": "BAAI/bge-m3",
+      "model_kwargs": {
+        "torch_dtype": "float16"
+      },
+      "compile": {
+        "dynamic": true
+      },
+      "encode_kwargs": {
+        "batch_size": 256
+      }
+    },
+    {
+      "name": "Jina-v3",
+      "model_path": "jinaai/jina-embeddings-v3",
+      "trust_remote_code": true,
+      "encode_kwargs": {
+        "task": "text-matching",
+        "prompt_name": "text-matching",
+        "batch_size": 256
+      },
+      "model_kwargs": {
+        "torch_dtype": "float16"
+      },
+      "compile": {
+        "dynamic": true
+      }
+    },
+    {
+      "name": "Qwen3-Emb",
+      "model_path": "Qwen/Qwen3-Embedding-0.6B",
+      "encode_kwargs": {
+        "prompt_name": "query",
+        "batch_size": 256
+      },
+      "model_kwargs": {
+        "torch_dtype": "float16"
+      },
+      "compile": {
+        "dynamic": true
+      }
+    },
+    {
+      "name": "mE5-instr-P1",
+      "model_path": "intfloat/multilingual-e5-large-instruct",
+      "prompt": "Instruct: Retrieve texts that are a paraphrase of the given text\nQuery: ",
+      "model_kwargs": {
+        "torch_dtype": "float16"
+      },
+      "compile": {
+        "dynamic": true
+      },
+      "encode_kwargs": {
+        "batch_size": 256
+      }
+    },
+    {
+      "name": "mE5-instr-P2",
+      "model_path": "intfloat/multilingual-e5-large-instruct",
+      "prompt": "Instruct: Retrieve texts that are semantically equivalent to the given text\nQuery: ",
+      "model_kwargs": {
+        "torch_dtype": "float16"
+      },
+      "compile": {
+        "dynamic": true
+      },
+      "encode_kwargs": {
+        "batch_size": 256
+      }
+    },
+    {
+      "name": "mE5-instr-P3",
+      "model_path": "intfloat/multilingual-e5-large-instruct",
+      "prompt": "Instruct: Retrieve texts that express the same content as the given text\nQuery: ",
+      "model_kwargs": {
+        "torch_dtype": "float16"
+      },
+      "compile": {
+        "dynamic": true
+      },
+      "encode_kwargs": {
+        "batch_size": 256
+      }
+    }
+  ],
+  "scorers": [
+    {
+      "name": "thr",
+      "method": "threshold"
+    },
+    {
+      "name": "lr-abs",
+      "method": "logistic_regression",
+      "feature": "unsigned_difference"
+    },
+    {
+      "name": "lr-sgn",
+      "method": "logistic_regression",
+      "feature": "signed_difference"
+    },
+    {
+      "name": "lr-cat",
+      "method": "logistic_regression",
+      "feature": "concatenation"
+    },
+    {
+      "name": "lr-sum",
+      "method": "logistic_regression",
+      "feature": "sum"
+    }
+  ]
+}

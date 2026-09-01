@@ -1,2 +1,26 @@
+# Verified working combination. Install in one pass so pip resolves them together:
+#   pip install -r requirements.txt
+# If the environment already has these packages loaded, restart the interpreter
+# afterwards; a fresh install does not take effect otherwise.
+#
+# Why these are pinned:
+#  - sentence-transformers 6.x requires transformers v5, which breaks models loaded
+#    with trust_remote_code (mGTE, Jina v3, KaLM). 5.7 is the release that added
+#    torch.compile inference, so nothing is lost by staying below 6.
+#  - tokenizers and huggingface-hub need their own pins. transformers bounds both
+#    (tokenizers<=0.23.0, huggingface-hub<1.0) while sentence-transformers gives
+#    only lower bounds, so a resolver is free to leave a too-new version in place.
+#    transformers then refuses to import, with an error naming tokenizers rather
+#    than anything to do with this benchmark.
+sentence-transformers==5.7.0
+transformers==4.56.0
+tokenizers>=0.22.0,<=0.23.0
+huggingface-hub>=0.34.0,<1.0
+
+numpy
+scikit-learn
 pandas
+
+# Only needed by the original LLM benchmark (benchmarking.py), not by the
+# embedding pipeline.
 OpenAI
